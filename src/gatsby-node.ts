@@ -14,27 +14,38 @@ interface ServerlessRoutingRule {
 // converts gatsby redirects + rewrites to S3 routing rules
 // https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-websiteconfiguration-routingrules.html
 const getRules = (pluginOptions: PluginOptions, routes: GatsbyRedirect[]): RoutingRules => (
-    routes.map(route => ({
-        Condition: {
-            KeyPrefixEquals: withoutLeadingSlash(route.fromPath),
-            ...(route.fromPath.endsWith('*')
-                ? {}
-                : { HttpErrorCodeReturnedEquals: '404' }
-            )
-        },
-        Redirect: {
-            ...(route.fromPath.endsWith('*')
-                // doing route.toPath.substring here is sort of (w)hack. https://i.giphy.com/media/iN5qfn8S2qVgI/giphy.webp
-                // the syntax that gatsby invented here does not work with routing rules.
-                // routing rules syntax is `/app/` not `/app/*` (it's basically prefix by default)
-                ? { ReplaceKeyPrefixWith: withTrailingSlash(withoutLeadingSlash(route.toPath.substring(0, route.toPath.length - 1))) }
-                : { ReplaceKeyWith: withoutLeadingSlash(route.toPath) }
-            ),
+    routes.map(route => {
+        const alwaysTheSame = {
             HttpRedirectCode: route.isPermanent ? '301' : '302',
             Protocol: pluginOptions.protocol,
             HostName: pluginOptions.hostname,
-        }
-    }))
+        };
+
+        return route.fromPath.endsWith('*')
+            ? {
+                Condition: {
+                    // doing route.toPath.substring here is sort of (w)hack. https://i.giphy.com/media/iN5qfn8S2qVgI/giphy.webp
+                    // the syntax that gatsby invented here does not work with routing rules.
+                    // routing rules syntax is `/app/` not `/app/*` (it's basically prefix by default)
+                    KeyPrefixEquals: withoutLeadingSlash(route.fromPath.substring(0, route.fromPath.length - 1))
+                },
+                Redirect: {
+                    ReplaceKeyPrefixWith: withTrailingSlash(withoutLeadingSlash(route.toPath)),
+                    ...alwaysTheSame
+                }
+            }
+            : {
+
+                Condition: {
+                    KeyPrefixEquals: withoutLeadingSlash(route.fromPath),
+                    HttpErrorCodeReturnedEquals: '404'
+                },
+                Redirect: {
+                    ReplaceKeyWith: withoutLeadingSlash(route.toPath),
+                    ...alwaysTheSame
+                }
+            };
+    })
 );
 
 let params: Params = {};
